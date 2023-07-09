@@ -1,5 +1,7 @@
 import numpy as np
 import math
+import csv
+from collections import defaultdict
 
 from nnenum import nnenum
 from nnenum.settings import Settings
@@ -41,11 +43,11 @@ class Plotter:
             self.legend_label_list.append(label)
             self.legend_list.append(rec)
     
-    def add_cells(self, cells, color, label=None):
+    def add_cells(self, cells, color, label=None, filled=False):
         for cell in cells:
             x = self.p_lbs[cell[0]]
             y = self.theta_lbs[cell[1]]
-            cell = plt.Rectangle((x, y), self.cell_width, self.cell_height, fill=False, linewidth=2, edgecolor=color, alpha=1)
+            cell = plt.Rectangle((x, y), self.cell_width, self.cell_height, fill=filled, linewidth=2, edgecolor=color, alpha=1)
             self.ax.add_patch(cell)
             self.p_bounds[0] = min(self.p_bounds[0], x)
             self.p_bounds[1] = max(self.p_bounds[1], x+self.cell_width)
@@ -99,6 +101,7 @@ class Plotter:
         if len(self.legend_list) != 0:
             self.ax.legend(self.legend_list, self.legend_label_list, loc='lower right')
         self.fig.savefig(file_name)
+        plt.close()
 
 class Simulator:
     def __init__(self, network_file_path) -> None:
@@ -128,12 +131,19 @@ class Simulator:
 
 
 class BaselineVerifier:
-    def __init__(self, network_file_path, p_lbs, p_ubs, theta_lbs, theta_ubs) -> None:
+    def __init__(self, network_file_path, p_lbs, p_ubs, theta_lbs, theta_ubs, csv_file=None) -> None:
         self.network = nnenum.load_onnx_network(network_file_path)
         self.p_lbs = p_lbs
         self.p_ubs = p_ubs
         self.theta_lbs = theta_lbs
         self.theta_ubs = theta_ubs
+        if csv_file is not None:
+            self.control_bounds = defaultdict(tuple)
+            with open(csv_file, newline='') as csvfile:
+                reader = csv.reader(csvfile, delimiter=',')
+                for row in reader:
+                    cell = (float(row[0]), float(row[1]), float(row[2]), float(row[3]))
+                    self.control_bounds[cell] = (float(row[4]), float(row[5]))
 
     def get_control_interval_bounds_from_stars(self, stars):
         """
@@ -219,16 +229,19 @@ class BaselineVerifier:
         theta_lb = self.theta_lbs[theta_idx]
         theta_ub = self.theta_ubs[theta_idx]
 
-        init_box = [[-0.8, 0.8], [-0.8, 0.8]]
-        init_box.extend([[p_lb, p_ub], [theta_lb, theta_ub]])
-        init_box = np.array(init_box, dtype=np.float32)
-        init_bm, init_bias, init_box = compress_init_box(init_box)
-        star = LpStar(init_bm, init_bias, init_box)
+        if hasattr(self, 'control_bounds'):
+            control_bounds = self.control_bounds[(p_lb, p_ub, theta_lb, theta_ub)]
+        else:
+            init_box = [[-0.8, 0.8], [-0.8, 0.8]]
+            init_box.extend([[p_lb, p_ub], [theta_lb, theta_ub]])
+            init_box = np.array(init_box, dtype=np.float32)
+            init_bm, init_bias, init_box = compress_init_box(init_box)
+            star = LpStar(init_bm, init_bias, init_box)
 
-        # start to verify the network
-        result = nnenum.enumerate_network(star, self.network)
-        control_bounds = self.get_control_interval_bounds_from_stars(result.stars)
-        control_bounds = np.rad2deg(control_bounds)
+            # start to verify the network
+            result = nnenum.enumerate_network(star, self.network)
+            control_bounds = self.get_control_interval_bounds_from_stars(result.stars)
+            control_bounds = np.rad2deg(control_bounds)
         p_bounds_, theta_bounds_ = self.dynamics(control_bounds, (p_lb, p_ub), (theta_lb, theta_ub), radians=False)
         reachable_cells = self.get_overlapping_cells_from_intervals(p_bounds_, theta_bounds_, return_indices=return_indices)
 
