@@ -471,11 +471,9 @@ class MultiStepVerifier:
             return_dict['reachable_cells'] = reachable_cells
             if return_verts:
                 return_dict['verts'] = []
-            if return_verts:
-                return reachable_cells, verts
-            else:
-                return reachable_cells
-        
+            
+            return return_dict 
+
         if return_verts:
             reachable_cells, verts = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=True)
             return_dict['verts'] = verts
