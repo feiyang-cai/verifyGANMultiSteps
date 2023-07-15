@@ -81,10 +81,12 @@ def main():
         logging.info("Reachable set already exists, exiting")
         sys.exit(0)
 
+    loading_from_emergency_save = False
     if os.path.exists(emergency_save_file):
         logging.info("Emergency save file exists, loading from it")
         with open(emergency_save_file, 'rb') as f:
             reachable_set = pickle.load(f)
+        loading_from_emergency_save = True
 
     start_point = len(p_lbs) // server_total_num * (server_id-1)
     end_point = len(p_lbs) // server_total_num * (server_id)
@@ -94,7 +96,10 @@ def main():
             line_file = os.path.join(result_path,
                                     f"reachable_set_{int(p_lbs[0])}_{int(p_ubs[-1])}_{len(p_lbs)}_{int(theta_lbs[0])}_{int(theta_ubs[-1])}_{len(theta_lbs)}_line_{p_idx}.pkl")
             
-            if os.path.exists(line_file):
+            if loading_from_emergency_save==False and os.path.exists(line_file):
+                with open(line_file, 'rb') as f:
+                    logging.info(f"Loading reachable set for line {p_idx}")
+                    reachable_set = pickle.load(f)
                 continue
 
             for theta_idx in (pbar := tqdm(range(len(theta_lbs)), leave=False)):
