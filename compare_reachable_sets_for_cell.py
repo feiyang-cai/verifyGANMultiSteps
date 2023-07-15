@@ -10,7 +10,7 @@ def main():
     parser = argparse.ArgumentParser(description='Description of your program')
 
     # Add the arguments
-    parser.add_argument('--p_idx', type=int, default=30, help='Cell index of p')
+    parser.add_argument('--p_idx', type=int, default=31, help='Cell index of p')
     parser.add_argument('--theta_idx', type=int, default=65, help='Cell index of theta')
     parser.add_argument('--p_range_lb', type=float, default=-11.0, help='Lower bound for p_range')
     parser.add_argument('--p_range_ub', type=float, default=+11.0, help='Upper bound for p_range')

@@ -278,10 +278,9 @@ class MultiStepVerifier:
         theta_lb = star.minimize_output(1, False)
 
         # p of reachable_sets might be out of the range (unsafe), filter them out here
-        # in the experiment, we found that the reachable sets are always in the range
+        # filter them out here
         if p_lb < self.p_lbs[0] or p_ub > self.p_ubs[-1]:
-            raise Exception("p out of range")
-            #return [[-1, -1], [-1, -1]]
+            return [[-1, -1], [-1, -1]]
 
         # get the lower and upper bound indices of the output interval
         p_lb_idx = math.floor((p_lb - self.p_lbs[0])/(self.p_ubs[0]-self.p_lbs[0])) # floor
@@ -349,13 +348,30 @@ class MultiStepVerifier:
         verts = []
         for star in stars:
 
-            if return_verts:
-                verts.append(star.verts())
-
             # compute the interval enclosure for the star set to get the candidate cells
             ## TODO: using zonotope enclosure may be faster,
             ## but we need to solve LPs to get the candidate cells
             interval_enclosure = self.compute_interval_enclosure(star)
+
+            ## if p is out of the range (unsafe), then clear the reachable cells
+            if interval_enclosure == [[-1, -1], [-1, -1]]:
+                reachable_cells = set()
+                if return_indices:
+                    reachable_cells.add((-2, -2))
+                else:
+                    reachable_cells.add((-2, -2, -2, -2))
+                break
+
+            if return_verts:
+                verts.append(star.verts())
+
+            # if the theta out of the range, discard the star
+            if interval_enclosure[1][0] >= len(self.theta_lbs) or interval_enclosure[1][1] <= 0:
+                if return_indices:
+                    reachable_cells.add((-3, -3))
+                else:
+                    reachable_cells.add((-3, -3, -3, -3))
+                continue
 
             assert interval_enclosure[0][0] <= interval_enclosure[0][1] - 1
             assert interval_enclosure[1][0] <= interval_enclosure[1][1] - 1
@@ -385,7 +401,7 @@ class MultiStepVerifier:
             return reachable_cells
 
 
-    def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_verts=False):
+    def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False):
         reachable_cells = set()
 
         p_lb = self.p_lbs[p_idx]
@@ -414,16 +430,13 @@ class MultiStepVerifier:
             else:
                 reachable_cells.add((self.p_lbs[p_idx], self.p_ubs[p_idx], 
                                      self.theta_lbs[theta_idx], self.theta_ubs[theta_idx]))
-        print(len(reachable_cells))
 
         # set nneum settings
         nnenum.set_exact_settings()
         Settings.GLPK_TIMEOUT = 10
-        Settings.PRINT_OUTPUT = True
+        Settings.PRINT_OUTPUT = print_output
         Settings.TIMING_STATS = True
         Settings.RESULT_SAVE_STARS = True
-        Settings.SPLIT_TOLERANCE = 1e-2
-
 
         init_box = [[-0.8, 0.8], [-0.8, 0.8]]
         init_box.extend([[p_lb, p_ub], [theta_lb, theta_ub]])
@@ -432,11 +445,42 @@ class MultiStepVerifier:
         init_bm, init_bias, init_box = compress_init_box(init_box)
         star = LpStar(init_bm, init_bias, init_box)
 
-        # start to verify the network
-        result = nnenum.enumerate_network(star, self.network)
+        return_dict = dict()
+
+        for split_tolerance in [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
+            if pbar is not None:
+                pbar.set_description(f"split_tolerance={split_tolerance}")
+            else:
+                print(f"split_tolerance={split_tolerance}")
+            Settings.SPLIT_TOLERANCE = split_tolerance # small outputs get rounded to zero when deciding if splitting is possible
+            result = nnenum.enumerate_network(star, self.network)
+            if result.result_str != "error":
+                if return_tolerance:
+                    return_dict['split_tolerance'] = split_tolerance
+                break
+        
+        if result.result_str == "error":
+            if return_tolerance:
+                return_dict['split_tolerance'] = -1.0
+            reachable_cells = set()
+            if return_indices:
+                reachable_cells.add((-1, -1))
+            else:
+                reachable_cells.add((-1, -1, -1, -1))
+            
+            return_dict['reachable_cells'] = reachable_cells
+            if return_verts:
+                return_dict['verts'] = []
+            if return_verts:
+                return reachable_cells, verts
+            else:
+                return reachable_cells
+        
         if return_verts:
             reachable_cells, verts = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=True)
-            return reachable_cells, verts
+            return_dict['verts'] = verts
         else:
             reachable_cells = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=False)
-            return reachable_cells
+        return_dict['reachable_cells'] = reachable_cells
+
+        return return_dict
