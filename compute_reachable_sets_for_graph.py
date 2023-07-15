@@ -110,7 +110,7 @@ def main():
 
                 logging.info(f"Computing reachable set for cell ({p_idx}, {theta_idx})")
                 results = verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, pbar=pbar, return_tolerance=True)
-                if results['split_tolerance'] is None:
+                if results['split_tolerance'] == -1.0:
                     logging.error(f"Error in computing reachable set for cell ({p_idx}, {theta_idx}) trying all split tolerances")
                 else:
                     logging.info(f"Computed reachable set for cell ({p_idx}, {theta_idx}) using split tolerance {results['split_tolerance']}, and the reachable set has {len(results['reachable_cells'])} cells")
