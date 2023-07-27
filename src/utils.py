@@ -13,6 +13,8 @@ from matplotlib import pyplot as plt
 from matplotlib.path import Path
 import matplotlib.patches as patches
 
+import time
+
 class Plotter:
     def __init__(self, p_lbs, theta_lbs) -> None:
         self.fig, self.ax = plt.subplots(figsize=(8,8), dpi=200)
@@ -84,6 +86,7 @@ class Plotter:
         else:    
             self.ax.set_xlim(self.p_bounds[0]-0.2, self.p_bounds[1]+0.2)
             self.ax.set_ylim(self.theta_bounds[0]-0.2, self.theta_bounds[1]+0.2)
+
         ## plot grids
         for p_lb in self.p_lbs:
             X = [p_lb, p_lb]
@@ -401,8 +404,11 @@ class MultiStepVerifier:
             return reachable_cells
 
 
-    def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False):
+    def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False, single_thread=False):
         reachable_cells = set()
+        time_dict = defaultdict()
+
+        t_start = time.time()
 
         p_lb = self.p_lbs[p_idx]
         p_ub = self.p_ubs[p_idx]
@@ -410,6 +416,7 @@ class MultiStepVerifier:
         theta_ub = self.theta_ubs[theta_idx]
 
         # simulations
+        t_start_sim = time.time()
         samples = 5000
         z = np.random.uniform(-0.8, 0.8, size=(samples, self.step*2)).astype(np.float32)
         p = np.random.uniform(p_lb, p_ub, size=(samples, 1)).astype(np.float32)
@@ -431,12 +438,17 @@ class MultiStepVerifier:
                 reachable_cells.add((self.p_lbs[p_idx], self.p_ubs[p_idx], 
                                      self.theta_lbs[theta_idx], self.theta_ubs[theta_idx]))
 
+        t_end_sim = time.time()
+        time_dict['simulation'] = t_end_sim - t_start_sim
+
         # set nneum settings
         nnenum.set_exact_settings()
         Settings.GLPK_TIMEOUT = 10
         Settings.PRINT_OUTPUT = print_output
-        Settings.TIMING_STATS = True
+        Settings.TIMING_STATS = False
         Settings.RESULT_SAVE_STARS = True
+        if single_thread:
+            Settings.NUM_PROCESSES = 1
 
         init_box = [[-0.8, 0.8], [-0.8, 0.8]]
         init_box.extend([[p_lb, p_ub], [theta_lb, theta_ub]])
@@ -448,17 +460,21 @@ class MultiStepVerifier:
         return_dict = dict()
 
         for split_tolerance in [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
+            t_start_enum = time.time()
             if pbar is not None:
                 pbar.set_description(f"split_tolerance={split_tolerance}")
             else:
                 print(f"split_tolerance={split_tolerance}")
             Settings.SPLIT_TOLERANCE = split_tolerance # small outputs get rounded to zero when deciding if splitting is possible
             result = nnenum.enumerate_network(star, self.network)
+            t_end_enum = time.time()
+            time_dict[f'enumerate_network_{split_tolerance}'] = t_end_enum - t_start_enum
             if result.result_str != "error":
                 if return_tolerance:
                     return_dict['split_tolerance'] = split_tolerance
                 break
         
+
         if result.result_str == "error":
             if return_tolerance:
                 return_dict['split_tolerance'] = -1.0
@@ -472,13 +488,22 @@ class MultiStepVerifier:
             if return_verts:
                 return_dict['verts'] = []
             
+            t_end = time.time()
+            time_dict['total_time'] = t_end - t_start
+            return_dict['time_dict'] = time_dict
             return return_dict 
 
+        t_start_get_reachable = time.time()
         if return_verts:
             reachable_cells, verts = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=True)
             return_dict['verts'] = verts
         else:
             reachable_cells = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=False)
+        t_end_get_reachable = time.time()
+        time_dict['get_reachable_cells'] = t_end_get_reachable - t_start_get_reachable
+        t_end = time.time()
+        time_dict['total_time'] = t_end - t_start
+        return_dict['time_dict'] = time_dict
         return_dict['reachable_cells'] = reachable_cells
 
         return return_dict
