@@ -14,9 +14,11 @@ from matplotlib.path import Path
 import matplotlib.patches as patches
 
 import time
+import pickle
+from tqdm import tqdm
 
 class Plotter:
-    def __init__(self, p_lbs, theta_lbs) -> None:
+    def __init__(self, p_lbs, theta_lbs, x_lims=(-11.0, 11.0), y_lims=(-30.0, 30.0)) -> None:
         self.fig, self.ax = plt.subplots(figsize=(8,8), dpi=200)
         self.p_bounds = [np.inf, -np.inf]
         self.theta_bounds = [np.inf, -np.inf]
@@ -26,7 +28,37 @@ class Plotter:
         self.cell_height = (theta_lbs[1] - theta_lbs[0])
         self.legend_label_list = []
         self.legend_list = []
-    
+        self.ax.set_xlim(x_lims[0], x_lims[1])
+        self.ax.set_ylim(y_lims[0], y_lims[1])
+
+    def add_safety_violation_region(self, p_safety_bounds=(-10.0, 10.0), theta_safety_bounds=(-30.0, 30.0), color='red'):
+        # add safety violation region
+        p_axis_bounds = self.ax.get_xlim()
+        theta_axis_bounds = self.ax.get_ylim()
+
+        width = p_safety_bounds[0] - p_axis_bounds[0]
+        height = theta_axis_bounds[1] - theta_axis_bounds[0]
+        if width > 0 and height > 0:
+            rec = plt.Rectangle((p_axis_bounds[0], theta_axis_bounds[0]), width, height, color=color, alpha=0.2)
+            self.ax.add_patch(rec)
+
+        width = -p_safety_bounds[1] + p_axis_bounds[1]
+        if width > 0 and height > 0:
+            rec = plt.Rectangle((p_safety_bounds[1], theta_axis_bounds[0]), width, height, color=color, alpha=0.2)
+            self.ax.add_patch(rec)
+        
+        width = p_axis_bounds[1] - p_axis_bounds[0]
+        height = theta_safety_bounds[0] - theta_axis_bounds[0]
+        if width > 0 and height > 0:
+            rec = plt.Rectangle((p_axis_bounds[0], theta_axis_bounds[0]), width, height, color=color, alpha=0.2)
+            self.ax.add_patch(rec)
+        
+        height = -theta_safety_bounds[1] + theta_axis_bounds[1]
+        if width > 0 and height > 0:
+            rec = plt.Rectangle((p_axis_bounds[0], theta_safety_bounds[1]), width, height, color=color, alpha=0.2)
+            self.ax.add_patch(rec)
+        self.legend_label_list.append("Safety Violation Region")
+        self.legend_list.append(rec)    
 
     def add_patches(self, patches, color, label=None):
         for patch in patches:
@@ -49,7 +81,7 @@ class Plotter:
         for cell in cells:
             x = self.p_lbs[cell[0]]
             y = self.theta_lbs[cell[1]]
-            cell = plt.Rectangle((x, y), self.cell_width, self.cell_height, fill=filled, linewidth=2, edgecolor=color, alpha=1)
+            cell = plt.Rectangle((x, y), self.cell_width, self.cell_height, fill=filled, linewidth=2, facecolor=color, edgecolor=color, alpha=1)
             self.ax.add_patch(cell)
             self.p_bounds[0] = min(self.p_bounds[0], x)
             self.p_bounds[1] = max(self.p_bounds[1], x+self.cell_width)
@@ -79,7 +111,19 @@ class Plotter:
             self.legend_label_list.append(label)
             self.legend_list.append(scatter)
     
-    def save_figure(self, file_name, x_range=None, y_range=None):
+    def save_figure(self, file_name, x_range=None, y_range=None, plot_grids=False):
+        if plot_grids:
+            ## plot grids
+            for p_lb in self.p_lbs:
+                X = [p_lb, p_lb]
+                Y = [self.theta_lbs[0], self.theta_lbs[-1]+self.theta_lbs[1]-self.theta_lbs[0]]
+                self.ax.plot(X, Y, 'lightgray', alpha=0.2)
+
+            for theta_lb in self.theta_lbs:
+                Y = [theta_lb, theta_lb]
+                X = [self.p_lbs[0], self.p_lbs[-1]+self.p_lbs[1]-self.p_lbs[0]]
+                self.ax.plot(X, Y, 'lightgray', alpha=0.2)
+
         if x_range is not None and y_range is not None:
             self.ax.set_xlim(x_range[0], x_range[1])
             self.ax.set_ylim(y_range[0], y_range[1])
@@ -87,22 +131,12 @@ class Plotter:
             self.ax.set_xlim(self.p_bounds[0]-0.2, self.p_bounds[1]+0.2)
             self.ax.set_ylim(self.theta_bounds[0]-0.2, self.theta_bounds[1]+0.2)
 
-        ## plot grids
-        for p_lb in self.p_lbs:
-            X = [p_lb, p_lb]
-            Y = [self.theta_lbs[0], self.theta_lbs[-1]]
-            self.ax.plot(X, Y, 'lightgray', alpha=0.2)
-
-        for theta_lb in self.theta_lbs:
-            Y = [theta_lb, theta_lb]
-            X = [self.p_lbs[0], self.p_lbs[-1]]
-            self.ax.plot(X, Y, 'lightgray', alpha=0.2)
         
         
         self.ax.set_xlabel(r"$p$ (m)")
         self.ax.set_ylabel(r"$\theta$ (degrees)")
         if len(self.legend_list) != 0:
-            self.ax.legend(self.legend_list, self.legend_label_list, loc='lower right')
+            self.ax.legend(self.legend_list, self.legend_label_list, loc='upper right')
         self.fig.savefig(file_name)
         plt.close()
 
@@ -132,14 +166,43 @@ class Simulator:
             theta_list.append(theta_)
         return np.array(p_list).reshape(-1, 1), np.array(theta_list).reshape(-1, 1)
 
+    def simulate_next_step_eagerly_searching(self, ps, thetas):
+        z_samples = 500
+        input_name = self.session.get_inputs()[0].name
+        input_shape = self.session.get_inputs()[0].shape
+        output_name = self.session.get_outputs()[0].name
+        dirs = [(1, 0), (22., 60.), (0, 1), (22, -60.)]
+        p_list = []
+        theta_list = []
+        for idx, (p_i, theta_i) in enumerate(zip(ps, thetas)):
+            zs = np.random.uniform(-0.8, 0.8, size=(z_samples, 2)).astype(np.float32)
+            dir = dirs[idx % len(dirs)]
+            max_dist_along_dir = 0
+            p_ = None
+            theta_ = None
+            for z_i in zs:
+                input_0 = np.concatenate([z_i, p_i, theta_i]).astype(np.float32).reshape(input_shape)
+                res = self.session.run([output_name], {input_name: input_0})
+                p_cdd, theta_cdd = res[0][0]
+                dist_along_dir = np.abs(p_cdd * dir[0] + theta_cdd * dir[1])/np.sqrt(dir[0]**2 + dir[1]**2)
+                if dist_along_dir > max_dist_along_dir:
+                    max_dist_along_dir = dist_along_dir
+                    p_ = p_cdd
+                    theta_ = theta_cdd
+            p_list.append(p_)
+            theta_list.append(theta_)
+        return np.array(p_list).reshape(-1, 1), np.array(theta_list).reshape(-1, 1)
 
 class BaselineVerifier:
-    def __init__(self, network_file_path, p_lbs, p_ubs, theta_lbs, theta_ubs, csv_file=None) -> None:
-        self.network = nnenum.load_onnx_network(network_file_path)
+    def __init__(self, p_lbs, p_ubs, theta_lbs, theta_ubs, network_file_path=None, csv_file=None, p_safe_bounds=(-10.0, 10.0), theta_safe_bounds=(-30.0, 30.0)) -> None:
         self.p_lbs = p_lbs
         self.p_ubs = p_ubs
         self.theta_lbs = theta_lbs
         self.theta_ubs = theta_ubs
+        self.p_safe_bounds = p_safe_bounds
+        self.theta_safe_bounds = theta_safe_bounds
+
+        assert network_file_path is not None or csv_file is not None, "Either network_file_path or csv_file should be provided"
         if csv_file is not None:
             self.control_bounds = defaultdict(tuple)
             with open(csv_file, newline='') as csvfile:
@@ -147,6 +210,8 @@ class BaselineVerifier:
                 for row in reader:
                     cell = (float(row[0]), float(row[1]), float(row[2]), float(row[3]))
                     self.control_bounds[cell] = (float(row[4]), float(row[5]))
+        else:
+            self.network = nnenum.load_onnx_network(network_file_path)
 
     def get_control_interval_bounds_from_stars(self, stars):
         """
@@ -183,7 +248,7 @@ class BaselineVerifier:
                 theta_lb = theta_lb + dt * math.degrees(v/L*math.tan(math.radians(control_lb)))
                 theta_ub = theta_ub + dt * math.degrees(v/L*math.tan(math.radians(control_ub)))
 
-        return (p_lb, p_ub), (theta_lb, theta_ub)
+        return [p_lb, p_ub], [theta_lb, theta_ub]
     
     def get_overlapping_cells_from_intervals(self, p_bounds, theta_bounds, return_indices=False):
         """
@@ -202,10 +267,10 @@ class BaselineVerifier:
         theta_lb_idx = math.floor((theta_bounds[0] - self.theta_lbs[0])/(self.theta_ubs[0]-self.theta_lbs[0])) # floor
         theta_ub_idx = math.ceil((theta_bounds[1] - self.theta_lbs[0])/(self.theta_ubs[0]-self.theta_lbs[0])) # ceil
 
-        assert 0<=p_lb_idx<len(self.p_lbs)
-        assert 1<=p_ub_idx<=len(self.p_ubs)
-        assert 0<=theta_lb_idx<len(self.theta_lbs)
-        assert 1<=theta_ub_idx<=len(self.theta_ubs)
+        assert 0<=p_lb_idx<=len(self.p_lbs), f"({p_lb_idx}, {p_ub_idx}, {theta_lb_idx}, {theta_ub_idx})"
+        assert 0<=p_ub_idx<=len(self.p_ubs), f"({p_lb_idx}, {p_ub_idx}, {theta_lb_idx}, {theta_ub_idx})"
+        assert 0<=theta_lb_idx<=len(self.theta_lbs), f"({p_lb_idx}, {p_ub_idx}, {theta_lb_idx}, {theta_ub_idx})"
+        assert 0<=theta_ub_idx<=len(self.theta_ubs), f"({p_lb_idx}, {p_ub_idx}, {theta_lb_idx}, {theta_ub_idx})"
 
         for p_idx in range(p_lb_idx, p_ub_idx):
             for theta_idx in range(theta_lb_idx, theta_ub_idx):
@@ -219,22 +284,23 @@ class BaselineVerifier:
     
     def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_bounds=False):
 
-        # set nneum settings
-        nnenum.set_exact_settings()
-        Settings.GLPK_TIMEOUT = 10
-        Settings.PRINT_OUTPUT = False
-        Settings.TIMING_STATS = True
-        Settings.RESULT_SAVE_STARS = True
-        Settings.SPLIT_TOLERANCE = 1e-3
-
         p_lb = self.p_lbs[p_idx]
         p_ub = self.p_ubs[p_idx]
         theta_lb = self.theta_lbs[theta_idx]
         theta_ub = self.theta_ubs[theta_idx]
 
+        return_dict = dict()
         if hasattr(self, 'control_bounds'):
             control_bounds = self.control_bounds[(p_lb, p_ub, theta_lb, theta_ub)]
         else:
+            # set nneum settings
+            nnenum.set_exact_settings()
+            Settings.GLPK_TIMEOUT = 10
+            Settings.PRINT_OUTPUT = False
+            Settings.TIMING_STATS = True
+            Settings.RESULT_SAVE_STARS = True
+            Settings.SPLIT_TOLERANCE = 1e-8
+
             init_box = [[-0.8, 0.8], [-0.8, 0.8]]
             init_box.extend([[p_lb, p_ub], [theta_lb, theta_ub]])
             init_box = np.array(init_box, dtype=np.float32)
@@ -245,33 +311,64 @@ class BaselineVerifier:
             result = nnenum.enumerate_network(star, self.network)
             control_bounds = self.get_control_interval_bounds_from_stars(result.stars)
             control_bounds = np.rad2deg(control_bounds)
+
         p_bounds_, theta_bounds_ = self.dynamics(control_bounds, (p_lb, p_ub), (theta_lb, theta_ub), radians=False)
+
+        return_dict['out_of_p_safety_bounds'] = False
+        return_dict['out_of_theta_safety_bounds'] = False
+
+        if p_bounds_[0] < self.p_safe_bounds[0] or p_bounds_[1] > self.p_safe_bounds[1]:
+            return_dict['out_of_p_safety_bounds'] = True
+        if theta_bounds_[0] < self.theta_safe_bounds[0] or theta_bounds_[1] > self.theta_safe_bounds[1]:
+            return_dict['out_of_theta_safety_bounds'] = True
+            
+        # filter out the out of range cells
+        p_bounds_[0] = np.clip(p_bounds_[0], self.p_lbs[0], self.p_ubs[-1])
+        p_bounds_[1] = np.clip(p_bounds_[1], self.p_lbs[0], self.p_ubs[-1])
+        theta_bounds_[0] = np.clip(theta_bounds_[0], self.theta_lbs[0], self.theta_ubs[-1])
+        theta_bounds_[1] = np.clip(theta_bounds_[1], self.theta_lbs[0], self.theta_ubs[-1])
+        
         reachable_cells = self.get_overlapping_cells_from_intervals(p_bounds_, theta_bounds_, return_indices=return_indices)
+        return_dict['reachable_cells'] = reachable_cells
 
         if return_bounds:
-            return reachable_cells, p_bounds_, theta_bounds_
-        else:
-            return reachable_cells
+            return_dict['p_bounds'] = p_bounds_
+            return_dict['theta_bounds'] = theta_bounds_
+        
+        return return_dict
 
 class MultiStepVerifier:
-    def __init__(self, network_file_path, p_lbs, p_ubs, theta_lbs, theta_ubs) -> None:
-        Settings.ONNX_WHITELIST.append("TaxiNetDynamics")
-        self.network = nnenum.load_onnx_network(network_file_path)
+    def __init__(self, p_lbs, p_ubs, theta_lbs, theta_ubs, network_file_path=None, reachable_cells_path=None, p_safe_bounds=(-10.0, 10.0), theta_safe_bounds=(-30.0, 30.0)) -> None:
+
         self.p_lbs = p_lbs
         self.p_ubs = p_ubs
         self.theta_lbs = theta_lbs
         self.theta_ubs = theta_ubs
+        self.p_safe_bounds = p_safe_bounds
+        self.theta_safe_bounds = theta_safe_bounds
+        self.p_safe_lb_idx = math.ceil((p_safe_bounds[0] - p_lbs[0])/(p_ubs[0] - p_lbs[0]))
+        self.p_safe_ub_idx = math.floor((p_safe_bounds[1] - p_ubs[0])/(p_ubs[0] - p_lbs[0]))
+        self.theta_safe_lb_idx = math.ceil((theta_safe_bounds[0] - theta_lbs[0])/(theta_ubs[0] - theta_lbs[0]))
+        self.theta_safe_ub_idx = math.floor((theta_safe_bounds[1] - theta_ubs[0])/(theta_ubs[0] - theta_lbs[0]))
 
-        shared_library = "libcustom_dynamics.so"
-        so = ort.SessionOptions()
-        so.register_custom_ops_library(shared_library)
+        assert network_file_path is not None or reachable_cells_path is not None, "Either network_file_path or reachable_cells_path must be provided"
 
-        self.session = ort.InferenceSession(network_file_path, sess_options=so)
+        if reachable_cells_path is not None:
+            self.reachable_cells = pickle.load(open(reachable_cells_path, 'rb'))
 
-        self.input_name = self.session.get_inputs()[0].name
-        self.input_shape = self.session.get_inputs()[0].shape
-        self.output_name = self.session.get_outputs()[0].name
-        self.step = (self.input_shape[1]-2)//2
+        else:
+            Settings.ONNX_WHITELIST.append("TaxiNetDynamics")
+            shared_library = "libcustom_dynamics.so"
+            so = ort.SessionOptions()
+            so.register_custom_ops_library(shared_library)
+
+            self.network = nnenum.load_onnx_network(network_file_path)
+            self.session = ort.InferenceSession(network_file_path, sess_options=so)
+
+            self.input_name = self.session.get_inputs()[0].name
+            self.input_shape = self.session.get_inputs()[0].shape
+            self.output_name = self.session.get_outputs()[0].name
+            self.step = (self.input_shape[1]-2)//2
     
     def compute_interval_enclosure(self, star):
         # compute the enclosure of the output interval
@@ -283,7 +380,8 @@ class MultiStepVerifier:
         # p of reachable_sets might be out of the range (unsafe), filter them out here
         # filter them out here
         if p_lb < self.p_lbs[0] or p_ub > self.p_ubs[-1]:
-            return [[-1, -1], [-1, -1]]
+            raise Exception("p out of range")
+            #return [[-1, -1], [-1, -1]]
 
         # get the lower and upper bound indices of the output interval
         p_lb_idx = math.floor((p_lb - self.p_lbs[0])/(self.p_ubs[0]-self.p_lbs[0])) # floor
@@ -405,105 +503,184 @@ class MultiStepVerifier:
 
 
     def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False, single_thread=False):
-        reachable_cells = set()
-        time_dict = defaultdict()
-
-        t_start = time.time()
-
         p_lb = self.p_lbs[p_idx]
         p_ub = self.p_ubs[p_idx]
         theta_lb = self.theta_lbs[theta_idx]
         theta_ub = self.theta_ubs[theta_idx]
 
-        # simulations
-        t_start_sim = time.time()
-        samples = 5000
-        z = np.random.uniform(-0.8, 0.8, size=(samples, self.step*2)).astype(np.float32)
-        p = np.random.uniform(p_lb, p_ub, size=(samples, 1)).astype(np.float32)
-        theta = np.random.uniform(theta_lb, theta_ub, size=(samples, 1)).astype(np.float32)
-
-        for z_i, p_i, theta_i in zip(z, p, theta):
-            assert p_i<=p_ub and p_i>=p_lb
-            assert theta_i<=theta_ub and theta_i>=theta_lb
-            z_i_pre = z_i[:2]
-            z_i_post = z_i[2:]
-            input_0 = np.concatenate([z_i_pre, p_i, theta_i, z_i_post]).astype(np.float32).reshape(self.input_shape)
-            res = self.session.run([self.output_name], {self.input_name: input_0})
-            p_, theta_ = res[0][0]
-            p_idx = math.floor((p_ - self.p_lbs[0])/(self.p_ubs[0]-self.p_lbs[0])) # floor
-            theta_idx = math.floor((theta_ - self.theta_lbs[0])/(self.theta_ubs[0]-self.theta_lbs[0])) # floor
-            if return_indices:
-                reachable_cells.add((p_idx, theta_idx))
-            else:
-                reachable_cells.add((self.p_lbs[p_idx], self.p_ubs[p_idx], 
-                                     self.theta_lbs[theta_idx], self.theta_ubs[theta_idx]))
-
-        t_end_sim = time.time()
-        time_dict['simulation'] = t_end_sim - t_start_sim
-
-        # set nneum settings
-        nnenum.set_exact_settings()
-        Settings.GLPK_TIMEOUT = 10
-        Settings.PRINT_OUTPUT = print_output
-        Settings.TIMING_STATS = False
-        Settings.RESULT_SAVE_STARS = True
-        if single_thread:
-            Settings.NUM_PROCESSES = 1
-
-        init_box = [[-0.8, 0.8], [-0.8, 0.8]]
-        init_box.extend([[p_lb, p_ub], [theta_lb, theta_ub]])
-        init_box.extend([[-0.8, 0.8]]*((self.step-1)*2))
-        init_box = np.array(init_box, dtype=np.float32)
-        init_bm, init_bias, init_box = compress_init_box(init_box)
-        star = LpStar(init_bm, init_bias, init_box)
-
         return_dict = dict()
+        if hasattr(self, 'reachable_cells'):
+            assert return_indices
+            assert not return_verts
 
-        for split_tolerance in [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
-            t_start_enum = time.time()
-            if pbar is not None:
-                pbar.set_description(f"split_tolerance={split_tolerance}")
-            else:
-                print(f"split_tolerance={split_tolerance}")
-            Settings.SPLIT_TOLERANCE = split_tolerance # small outputs get rounded to zero when deciding if splitting is possible
-            result = nnenum.enumerate_network(star, self.network)
-            t_end_enum = time.time()
-            time_dict[f'enumerate_network_{split_tolerance}'] = t_end_enum - t_start_enum
-            if result.result_str != "error":
-                if return_tolerance:
-                    return_dict['split_tolerance'] = split_tolerance
-                break
+            return_dict["out_of_p_safety_bounds"] = False
+            return_dict["out_of_theta_safety_bounds"] = False
+
+            if (p_idx, theta_idx) in self.reachable_cells:
+                if self.reachable_cells[(p_idx, theta_idx)] == {(-1, -1)}:
+                    print(f"warning: error in computing reachable cells for p_idx={p_idx}, theta_idx={theta_idx}, this should be overapproximated by a degraded method")
+                    return_dict["reachable_cells"] = set()
+                elif self.reachable_cells[(p_idx, theta_idx)] == {(-2, -2)}:
+                    return_dict["reachable_cells"] = self.reachable_cells[(p_idx, theta_idx)] 
+                    return_dict["out_of_p_safety_bounds"] = True
+                else:
+                    reachable_cells = set()
+                    for reachable_cell in self.reachable_cells[(p_idx, theta_idx)]:
+                        if reachable_cell == (-3, -3):
+                            reachable_cells.add((-3, -3))
+                            return_dict["out_of_theta_safety_bounds"] = True
+                            continue
+
+                        elif reachable_cell[0] > self.p_safe_ub_idx or reachable_cell[0] < self.p_safe_lb_idx:
+                            reachable_cells = {(-2, -2)}
+                            return_dict["out_of_p_safety_bounds"] = True
+                            break
+
+                        elif reachable_cell[1] > self.theta_safe_ub_idx or reachable_cell[1] < self.theta_safe_lb_idx:
+                            return_dict["out_of_theta_safety_bounds"] = True
+                            reachable_cells.add((-3, -3))
+                        
+                        else:
+                            reachable_cells.add(reachable_cell)
+                    
+                    return_dict["reachable_cells"] = reachable_cells
+
+        else:
+            reachable_cells = set()
+            time_dict = defaultdict()
+            t_start = time.time()
+
+
+
+            # simulations
+            t_start_sim = time.time()
+            samples = 5000
+            z = np.random.uniform(-0.8, 0.8, size=(samples, self.step*2)).astype(np.float32)
+            p = np.random.uniform(p_lb, p_ub, size=(samples, 1)).astype(np.float32)
+            theta = np.random.uniform(theta_lb, theta_ub, size=(samples, 1)).astype(np.float32)
+
+            for z_i, p_i, theta_i in zip(z, p, theta):
+                assert p_i<=p_ub and p_i>=p_lb
+                assert theta_i<=theta_ub and theta_i>=theta_lb
+                z_i_pre = z_i[:2]
+                z_i_post = z_i[2:]
+                input_0 = np.concatenate([z_i_pre, p_i, theta_i, z_i_post]).astype(np.float32).reshape(self.input_shape)
+                res = self.session.run([self.output_name], {self.input_name: input_0})
+                p_, theta_ = res[0][0]
+                p_idx = math.floor((p_ - self.p_lbs[0])/(self.p_ubs[0]-self.p_lbs[0])) # floor
+                theta_idx = math.floor((theta_ - self.theta_lbs[0])/(self.theta_ubs[0]-self.theta_lbs[0])) # floor
+                if return_indices:
+                    reachable_cells.add((p_idx, theta_idx))
+                else:
+                    reachable_cells.add((self.p_lbs[p_idx], self.p_ubs[p_idx], 
+                                         self.theta_lbs[theta_idx], self.theta_ubs[theta_idx]))
+
+            t_end_sim = time.time()
+            time_dict['simulation'] = t_end_sim - t_start_sim
+
+            # set nneum settings
+            nnenum.set_exact_settings()
+            Settings.GLPK_TIMEOUT = 10
+            Settings.PRINT_OUTPUT = print_output
+            Settings.TIMING_STATS = False
+            Settings.RESULT_SAVE_STARS = True
+            if single_thread:
+                Settings.NUM_PROCESSES = 1
+
+            init_box = [[-0.8, 0.8], [-0.8, 0.8]]
+            init_box.extend([[p_lb, p_ub], [theta_lb, theta_ub]])
+            init_box.extend([[-0.8, 0.8]]*((self.step-1)*2))
+            init_box = np.array(init_box, dtype=np.float32)
+            init_bm, init_bias, init_box = compress_init_box(init_box)
+            star = LpStar(init_bm, init_bias, init_box)
+
+            return_dict = dict()
+
+            for split_tolerance in [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
+                t_start_enum = time.time()
+                if pbar is not None:
+                    pbar.set_description(f"split_tolerance={split_tolerance}")
+                else:
+                    print(f"split_tolerance={split_tolerance}")
+                Settings.SPLIT_TOLERANCE = split_tolerance # small outputs get rounded to zero when deciding if splitting is possible
+                result = nnenum.enumerate_network(star, self.network)
+                t_end_enum = time.time()
+                time_dict[f'enumerate_network_{split_tolerance}'] = t_end_enum - t_start_enum
+                if result.result_str != "error":
+                    if return_tolerance:
+                        return_dict['split_tolerance'] = split_tolerance
+                    break
         
 
-        if result.result_str == "error":
-            if return_tolerance:
-                return_dict['split_tolerance'] = -1.0
-            reachable_cells = set()
-            if return_indices:
-                reachable_cells.add((-1, -1))
-            else:
-                reachable_cells.add((-1, -1, -1, -1))
-            
-            return_dict['reachable_cells'] = reachable_cells
+            if result.result_str == "error":
+                if return_tolerance:
+                    return_dict['split_tolerance'] = -1.0
+                reachable_cells = set()
+                if return_indices:
+                    reachable_cells.add((-1, -1))
+                else:
+                    reachable_cells.add((-1, -1, -1, -1))
+
+                return_dict['reachable_cells'] = reachable_cells
+                if return_verts:
+                    return_dict['verts'] = []
+
+                t_end = time.time()
+                time_dict['total_time'] = t_end - t_start
+                return_dict['time_dict'] = time_dict
+                return return_dict 
+
+            t_start_get_reachable = time.time()
             if return_verts:
-                return_dict['verts'] = []
-            
+                reachable_cells, verts = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=True)
+                return_dict['verts'] = verts
+            else:
+                reachable_cells = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=False)
+            t_end_get_reachable = time.time()
+            time_dict['get_reachable_cells'] = t_end_get_reachable - t_start_get_reachable
             t_end = time.time()
             time_dict['total_time'] = t_end - t_start
             return_dict['time_dict'] = time_dict
-            return return_dict 
-
-        t_start_get_reachable = time.time()
-        if return_verts:
-            reachable_cells, verts = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=True)
-            return_dict['verts'] = verts
-        else:
-            reachable_cells = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=False)
-        t_end_get_reachable = time.time()
-        time_dict['get_reachable_cells'] = t_end_get_reachable - t_start_get_reachable
-        t_end = time.time()
-        time_dict['total_time'] = t_end - t_start
-        return_dict['time_dict'] = time_dict
-        return_dict['reachable_cells'] = reachable_cells
+            return_dict['reachable_cells'] = reachable_cells
 
         return return_dict
+
+def compute_unsafe_cells(reachable_sets, p_lbs, p_ubs, theta_lbs, theta_ubs, p_safe_bounds=(-10.0, 10.0)):
+    isSafe = np.ones((len(p_lbs), len(theta_lbs)))
+    reversed_reachable_sets = defaultdict(set)
+    helper = set()
+    new_unsafe_state = []
+
+    for p_idx in tqdm(range(len(p_lbs))):
+        for theta_idx in tqdm(range(len(theta_lbs)), leave=False):
+            
+            if reachable_sets[(p_idx, theta_idx)] == {(-1, -1)} or p_lbs[p_idx] < p_safe_bounds[0] or p_ubs[p_idx] > p_safe_bounds[1]:
+                isSafe[p_idx, theta_idx] = 0
+                helper.add((p_idx, theta_idx))
+                new_unsafe_state.append((p_idx, theta_idx))
+                continue
+                
+            for reachable_cell in reachable_sets[(p_idx, theta_idx)]:
+                if reachable_cell == (-2, -2):
+                    isSafe[p_idx, theta_idx] = 0
+                    helper.add((p_idx, theta_idx))
+                    new_unsafe_state.append((p_idx, theta_idx))
+                    break
+                if reachable_cell == (-3, -3) or reachable_cell[1] > len(theta_lbs)-1:
+                    continue
+
+                assert len(p_lbs)>=reachable_cell[0] >= 0, f"reachable_cell: {reachable_cell}"
+                assert len(theta_lbs)>=reachable_cell[1] >= 0, f"reachable_cell: {reachable_cell}"
+                reversed_reachable_sets[reachable_cell].add((p_idx, theta_idx))
+    
+    while len(new_unsafe_state)>0:
+        temp = []
+        for i, j in new_unsafe_state:
+            for (_i, _j) in reversed_reachable_sets[(i, j)]:
+                if (_i, _j) not in helper:
+                    isSafe[_i, _j] = 0
+                    temp.append((_i, _j))
+                    helper.add((_i, _j))
+        new_unsafe_state = temp
+    
+    return isSafe
