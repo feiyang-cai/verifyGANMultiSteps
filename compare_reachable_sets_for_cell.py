@@ -18,6 +18,8 @@ def main():
     parser.add_argument('--theta_range_lb', type=float, default=-30.0, help='Lower bound for theta_range')
     parser.add_argument('--theta_range_ub', type=float, default=+30.0, help='Upper bound for theta_range')
     parser.add_argument('--theta_num_bin', type=int, default=128, help='Number of bins for theta')
+    parser.add_argument('--coeff_p', type=float, default=-0.74, help='Coefficient for p')
+    parser.add_argument('--coeff_theta', type=float, default=-0.44, help='Coefficient for theta')
     
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -77,7 +79,9 @@ def main():
 
     # simulation
     print("Simulating the system...")
-    network_file_path = "./models/system_model_1.onnx"
+    network_file_path = f"./models/system_model_1_{args.coeff_p}_{args.coeff_theta}.onnx"
+    print(f"Loading network from {network_file_path}")
+    assert os.path.exists(network_file_path)
 
     simulator = Simulator(network_file_path)
     # first step
@@ -99,11 +103,15 @@ def main():
 
     except:
         network_file_path = "./models/pre_dynamics.onnx"
-        baseline_verifier = BaselineVerifier(network_file_path, p_lbs, p_ubs, theta_lbs, theta_ubs)
+        baseline_verifier = BaselineVerifier(p_lbs, p_ubs, theta_lbs, theta_ubs, network_file_path)
         # first step
         print("Computing reachable set for the 1 step using baseline method...")
-        reachable_cells_baseline_1_step,  p_bounds_baseline_1_step, theta_bounds_baseline_1_step = \
+        #reachable_cells_baseline_1_step,  p_bounds_baseline_1_step, theta_bounds_baseline_1_step = \
+        result_dict = \
             baseline_verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, return_bounds=True)
+        reachable_cells_baseline_1_step = result_dict['reachable_cells']
+        p_bounds_baseline_1_step = result_dict['p_bounds']
+        theta_bounds_baseline_1_step = result_dict['theta_bounds']
         reachable_patches_baseline_1_step = [(p_bounds_baseline_1_step[0], p_bounds_baseline_1_step[1], theta_bounds_baseline_1_step[0], theta_bounds_baseline_1_step[1])]
     
         # second step
@@ -115,8 +123,13 @@ def main():
         for idx, cell in enumerate(reachable_cells_baseline_1_step):
             print("   Computing reachable set for the 2 step using baseline method for cell {} out of {}".format(idx+1, len(reachable_cells_baseline_1_step)))
             p_idx_1, theta_idx_1 = cell
-            reachable_cells_baseline_2_step_single,  p_bounds_baseline_2_step_single, theta_bounds_baseline_2_step_single = \
+            #reachable_cells_baseline_2_step_single,  p_bounds_baseline_2_step_single, theta_bounds_baseline_2_step_single = \
+            result_dict = \
                 baseline_verifier.compute_next_reachable_cells(p_idx_1, theta_idx_1, return_indices=True, return_bounds=True)
+            reachable_cells_baseline_2_step_single = result_dict['reachable_cells'] 
+            p_bounds_baseline_2_step_single = result_dict['p_bounds']
+            theta_bounds_baseline_2_step_single = result_dict['theta_bounds']
+            
             reachable_cells_baseline_2_step = reachable_cells_baseline_2_step.union(reachable_cells_baseline_2_step_single)
             reachable_patches_baseline_2_step.append((p_bounds_baseline_2_step_single[0], p_bounds_baseline_2_step_single[1], theta_bounds_baseline_2_step_single[0], theta_bounds_baseline_2_step_single[1]))
 
@@ -158,12 +171,15 @@ def main():
             reachable_verts_one_step_method_2_step = results_one_step_method['reachable_verts_2_step']
 
     except:
-        network_file_path = "./models/system_model_1.onnx"
-        one_step_verifier = MultiStepVerifier(network_file_path, p_lbs, p_ubs, theta_lbs, theta_ubs)
+        network_file_path = f"./models/system_model_1_{args.coeff_p}_{args.coeff_theta}.onnx"
+        #network_file_path = "./models/system_model_1.onnx"
+        one_step_verifier = MultiStepVerifier(p_lbs, p_ubs, theta_lbs, theta_ubs, network_file_path)
 
         # first step
         print("Computing reachable set for the 1 step using one step method...")
-        reachable_cells_one_step_method_1_step, reachable_verts_one_step_method_1_step = one_step_verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, return_verts=True)
+        result_dict = one_step_verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, return_verts=True)
+        reachable_cells_one_step_method_1_step = result_dict['reachable_cells']
+        reachable_verts_one_step_method_1_step = result_dict['verts']
 
         # second step
         print("Computing reachable set for the 2 step using one step method...")
@@ -173,8 +189,10 @@ def main():
         for idx, cell in enumerate(reachable_cells_one_step_method_1_step):
             print("   Computing reachable set for the 2 step using one step method for cell {} out of {}".format(idx+1, len(reachable_cells_one_step_method_1_step)))
             p_idx_1, theta_idx_1 = cell
-            reachable_cells_one_step_method_2_step_single, reachable_verts_one_step_method_2_step_single = \
+            result_dict = \
                 one_step_verifier.compute_next_reachable_cells(p_idx_1, theta_idx_1, return_indices=True, return_verts=True)
+            reachable_cells_one_step_method_2_step_single = result_dict['reachable_cells']
+            reachable_verts_one_step_method_2_step_single = result_dict['verts']
             reachable_cells_one_step_method_2_step = reachable_cells_one_step_method_2_step.union(reachable_cells_one_step_method_2_step_single)
             reachable_verts_one_step_method_2_step.extend(reachable_verts_one_step_method_2_step_single)
 
@@ -214,12 +232,14 @@ def main():
             reachable_verts_two_step_method_2_step = results_two_step_method['reachable_verts_2_step']
 
     except:
-        network_file_path = "./models/system_model_2.onnx"
-        two_step_verifier = MultiStepVerifier(network_file_path, p_lbs, p_ubs, theta_lbs, theta_ubs)
+        network_file_path = f"./models/system_model_2_{args.coeff_p}_{args.coeff_theta}.onnx"
+        two_step_verifier = MultiStepVerifier(p_lbs, p_ubs, theta_lbs, theta_ubs, network_file_path)
 
         # second step
         print("Computing reachable set for the 2 step using two step method...")
-        reachable_cells_two_step_method_2_step, reachable_verts_two_step_method_2_step = two_step_verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, return_verts=True)
+        result_dict = two_step_verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, return_verts=True, print_output=True)
+        reachable_cells_two_step_method_2_step = result_dict['reachable_cells']
+        reachable_verts_two_step_method_2_step = result_dict['verts']
 
         print("Saving the results...")
         results_two_step_method = dict()
