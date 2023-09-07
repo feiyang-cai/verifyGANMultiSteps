@@ -502,7 +502,7 @@ class MultiStepVerifier:
             return reachable_cells
 
 
-    def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False, single_thread=False):
+    def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False, single_thread=False, start_tol=1e-8, end_tol=1e-2):
         p_lb = self.p_lbs[p_idx]
         p_ub = self.p_ubs[p_idx]
         theta_lb = self.theta_lbs[theta_idx]
@@ -596,7 +596,9 @@ class MultiStepVerifier:
 
             return_dict = dict()
 
-            for split_tolerance in [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
+            split_tolerance = start_tol
+            while split_tolerance <= end_tol:
+            #for split_tolerance in [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
                 t_start_enum = time.time()
                 if pbar is not None:
                     pbar.set_description(f"split_tolerance={split_tolerance}")
@@ -610,6 +612,7 @@ class MultiStepVerifier:
                     if return_tolerance:
                         return_dict['split_tolerance'] = split_tolerance
                     break
+                split_tolerance *= 10
         
 
             if result.result_str == "error":

@@ -48,9 +48,44 @@ def main():
     os.makedirs(results_dir, exist_ok=True)
     print(p_lbs[p_idx], p_ubs[p_idx], theta_lbs[theta_idx], theta_ubs[theta_idx])
 
-    samples = 1000
-    p = np.random.uniform(p_lbs[p_idx], p_ubs[p_idx], size=(samples, 1)).astype(np.float32)
-    theta = np.random.uniform(theta_lbs[theta_idx], theta_ubs[theta_idx], size=(samples, 1)).astype(np.float32)
+    results_simulation_file_path = results_dir + f"results_simulation_{p_range_lb}_{p_range_ub}_{p_num_bin}_{theta_range_lb}_{theta_range_ub}_{theta_num_bin}_{p_idx}_{theta_idx}.pkl"
+
+    try:
+        with open(results_simulation_file_path, 'rb') as f:
+            results_simulations = pickle.load(f)
+            p = results_simulations['p']
+            theta = results_simulations['theta']
+            p_1_step = results_simulations['p_1_step']
+            theta_1_step = results_simulations['theta_1_step']
+            p_2_step = results_simulations['p_2_step']
+            theta_2_step = results_simulations['theta_2_step']
+
+    except:
+        samples = 1000
+        p = np.random.uniform(p_lbs[p_idx], p_ubs[p_idx], size=(samples, 1)).astype(np.float32)
+        theta = np.random.uniform(theta_lbs[theta_idx], theta_ubs[theta_idx], size=(samples, 1)).astype(np.float32)
+
+        # simulation
+        print("Simulating the system...")
+        network_file_path = f"./models/system_model_1_{args.coeff_p}_{args.coeff_theta}.onnx"
+        print(f"Loading network from {network_file_path}")
+        assert os.path.exists(network_file_path)
+
+        simulator = Simulator(network_file_path)
+        # first step
+        p_1_step, theta_1_step = simulator.simulate_next_step(p, theta)
+        # second step
+        p_2_step, theta_2_step = simulator.simulate_next_step(p_1_step, theta_1_step)
+
+        print("Saving the results...")
+        results_simulations = dict()
+        results_simulations['p'] = p
+        results_simulations['theta'] = theta
+        results_simulations['p_1_step'] = p_1_step
+        results_simulations['theta_1_step'] = theta_1_step
+        results_simulations['p_2_step'] = p_2_step
+        results_simulations['theta_2_step'] = theta_2_step
+        pickle.dump(results_simulations, open(results_simulation_file_path, "wb"))
 
     # initialize the reachable set
     plot_baseline = Plotter(p_lbs, theta_lbs)
@@ -77,17 +112,6 @@ def main():
     plot_combined.add_simulations(p, theta, color='red', label='Simulations')
     figure_combined_file_path = results_dir + f"plot_combined_{p_range_lb}_{p_range_ub}_{p_num_bin}_{theta_range_lb}_{theta_range_ub}_{theta_num_bin}_{p_idx}_{theta_idx}.png"
 
-    # simulation
-    print("Simulating the system...")
-    network_file_path = f"./models/system_model_1_{args.coeff_p}_{args.coeff_theta}.onnx"
-    print(f"Loading network from {network_file_path}")
-    assert os.path.exists(network_file_path)
-
-    simulator = Simulator(network_file_path)
-    # first step
-    p_1_step, theta_1_step = simulator.simulate_next_step(p, theta)
-    # second step
-    p_2_step, theta_2_step = simulator.simulate_next_step(p_1_step, theta_1_step)
     
     
     # baseline verifier
@@ -237,7 +261,7 @@ def main():
 
         # second step
         print("Computing reachable set for the 2 step using two step method...")
-        result_dict = two_step_verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, return_verts=True, print_output=True)
+        result_dict = two_step_verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, return_verts=True, print_output=True, start_tol=1e-4)
         reachable_cells_two_step_method_2_step = result_dict['reachable_cells']
         reachable_verts_two_step_method_2_step = result_dict['verts']
 
