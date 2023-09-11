@@ -67,7 +67,7 @@ def main():
         filemode='a'
     )
 
-    verifier = MultiStepVerifier(network_path, p_lbs, p_ubs, theta_lbs, theta_ubs)
+    verifier = MultiStepVerifier(p_lbs, p_ubs, theta_lbs, theta_ubs, network_path)
 
     reachable_set = defaultdict(set)
 
