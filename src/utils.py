@@ -380,8 +380,8 @@ class MultiStepVerifier:
         # p of reachable_sets might be out of the range (unsafe), filter them out here
         # filter them out here
         if p_lb < self.p_lbs[0] or p_ub > self.p_ubs[-1]:
-            raise Exception("p out of range")
-            #return [[-1, -1], [-1, -1]]
+            #raise Exception("p out of range")
+            return [[-1, -1], [-1, -1]]
 
         # get the lower and upper bound indices of the output interval
         p_lb_idx = math.floor((p_lb - self.p_lbs[0])/(self.p_ubs[0]-self.p_lbs[0])) # floor
