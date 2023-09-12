@@ -5,7 +5,6 @@ from src.utils import *
 from tqdm import tqdm
 from collections import defaultdict
 import pickle
-import sys
 import logging
 from datetime import datetime
 
@@ -68,8 +67,6 @@ def main():
     )
 
     verifier = MultiStepVerifier(p_lbs, p_ubs, theta_lbs, theta_ubs, network_path)
-
-    reachable_set = defaultdict(set)
 
     start_point = len(p_lbs) // server_total_num * (server_id-1)
     end_point = len(p_lbs) // server_total_num * (server_id)
