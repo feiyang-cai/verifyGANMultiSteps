@@ -1,0 +1,33 @@
+general:
+  device: cuda
+  #enable_incomplete_verification: false
+  #results_file: out.txt
+  #save_adv_example: false
+  #complete_verifier: mip
+model:
+  #onnx_path: single_step.onnx
+  name: Customized("custom_model_data", "MultiStepTaxiNet", index=1, num_steps=2)
+  path: ./models/single_step_-0.74_-0.44.pth
+  input_shape: [-1, 6]
+data:
+  dataset: CGAN
+  num_outputs: 1
+specification:
+  vnnlib_path: ./temp.vnnlib
+attack:
+  pgd_order: before
+  pgd_restarts: 100
+solver:
+  batch_size: 1
+  auto_enlarge_batch_size: True
+  bound_prop_method: crown
+  crown:
+    batch_size: 512
+bab:
+  initial_max_domains: 100
+  branching:
+    method: sb  # Split on input space.
+    sb_coeff_thresh: 0.01
+    input_split:
+      enable: True
+      catch_assertion: true
