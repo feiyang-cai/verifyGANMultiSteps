@@ -17,6 +17,8 @@ import time
 import pickle
 from tqdm import tqdm
 
+import logging
+
 class Plotter:
     def __init__(self, p_lbs, theta_lbs, x_lims=(-11.0, 11.0), y_lims=(-30.0, 30.0)) -> None:
         self.fig, self.ax = plt.subplots(figsize=(8,8), dpi=200)
@@ -350,6 +352,7 @@ class MultiStepVerifier:
         self.p_safe_ub_idx = math.floor((p_safe_bounds[1] - p_ubs[0])/(p_ubs[0] - p_lbs[0]))
         self.theta_safe_lb_idx = math.ceil((theta_safe_bounds[0] - theta_lbs[0])/(theta_ubs[0] - theta_lbs[0]))
         self.theta_safe_ub_idx = math.floor((theta_safe_bounds[1] - theta_ubs[0])/(theta_ubs[0] - theta_lbs[0]))
+        self.latent_bounds = 0.8
 
         assert network_file_path is not None or reachable_cells_path is not None, "Either network_file_path or reachable_cells_path must be provided"
 
@@ -481,6 +484,10 @@ class MultiStepVerifier:
             if interval_enclosure[0][0] == interval_enclosure[0][1] - 1 and interval_enclosure[1][0] == interval_enclosure[1][1] - 1:
                 if return_indices:
                     reachable_cells.add((interval_enclosure[0][0], interval_enclosure[1][0]))
+                    # sanity check if reachable cells from degraded method is provided
+                    if self.reachable_cells_from_degraded_method is not None and self.reachable_cells_from_degraded_method != {(-2, -2)}:
+                        if (interval_enclosure[0][0], interval_enclosure[1][0]) not in self.reachable_cells_from_degraded_method:
+                            logging.warning(f"    warning: error in computing reachable cells for p_idx={p_idx}, theta_idx={theta_idx}, this should be overapproximated by a degraded method")
                 else:
                     reachable_cells.add((self.p_lbs[interval_enclosure[0][0]], self.p_ubs[interval_enclosure[0][0]],
                                          self.theta_lbs[interval_enclosure[1][0]], self.theta_ubs[interval_enclosure[1][0]]))
@@ -489,6 +496,9 @@ class MultiStepVerifier:
             # intersection check for the candidate cells
             for p_idx in range(interval_enclosure[0][0], interval_enclosure[0][1]):
                 for theta_idx in range(interval_enclosure[1][0], interval_enclosure[1][1]):
+                    if self.reachable_cells_from_degraded_method is not None and self.reachable_cells_from_degraded_method != {(-2, -2)} and (p_idx, theta_idx) not in self.reachable_cells_from_degraded_method:
+                            continue
+
                     if return_indices and (p_idx, theta_idx) not in reachable_cells:
                         if self.check_intersection(star, p_idx, theta_idx):
                             reachable_cells.add((p_idx, theta_idx))
@@ -502,11 +512,14 @@ class MultiStepVerifier:
             return reachable_cells
 
 
-    def compute_next_reachable_cells(self, p_idx, theta_idx, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False, single_thread=False, start_tol=1e-8, end_tol=1e-2):
+    def compute_next_reachable_cells(self, p_idx, theta_idx, reachable_cells_from_degraded_method=None, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False, single_thread=False, start_tol=1e-8, end_tol=1e-2):
         p_lb = self.p_lbs[p_idx]
         p_ub = self.p_ubs[p_idx]
         theta_lb = self.theta_lbs[theta_idx]
         theta_ub = self.theta_ubs[theta_idx]
+        self.reachable_cells_from_degraded_method = reachable_cells_from_degraded_method
+        if self.reachable_cells_from_degraded_method is not None:
+            logging.info(f"    reachable cells from degraded method: {self.reachable_cells_from_degraded_method}")
 
         return_dict = dict()
         if hasattr(self, 'reachable_cells'):
@@ -518,7 +531,7 @@ class MultiStepVerifier:
 
             if (p_idx, theta_idx) in self.reachable_cells:
                 if self.reachable_cells[(p_idx, theta_idx)] == {(-1, -1)}:
-                    print(f"warning: error in computing reachable cells for p_idx={p_idx}, theta_idx={theta_idx}, this should be overapproximated by a degraded method")
+                    logging.info(f"warning: error in computing reachable cells for p_idx={p_idx}, theta_idx={theta_idx}, this should be overapproximated by a degraded method")
                     return_dict["reachable_cells"] = set()
                 elif self.reachable_cells[(p_idx, theta_idx)] == {(-2, -2)}:
                     return_dict["reachable_cells"] = self.reachable_cells[(p_idx, theta_idx)] 
@@ -554,8 +567,8 @@ class MultiStepVerifier:
 
             # simulations
             t_start_sim = time.time()
-            samples = 5000
-            z = np.random.uniform(-0.8, 0.8, size=(samples, self.step*2)).astype(np.float32)
+            samples = 10000
+            z = np.random.uniform(-self.latent_bounds, self.latent_bounds, size=(samples, self.step*2)).astype(np.float32)
             p = np.random.uniform(p_lb, p_ub, size=(samples, 1)).astype(np.float32)
             theta = np.random.uniform(theta_lb, theta_ub, size=(samples, 1)).astype(np.float32)
 
@@ -569,8 +582,34 @@ class MultiStepVerifier:
                 p_, theta_ = res[0][0]
                 p_idx = math.floor((p_ - self.p_lbs[0])/(self.p_ubs[0]-self.p_lbs[0])) # floor
                 theta_idx = math.floor((theta_ - self.theta_lbs[0])/(self.theta_ubs[0]-self.theta_lbs[0])) # floor
+
+                # if p is out of the range (unsafe), then only return (-2, -2), break
+                if p_idx < 0 or p_idx >= len(self.p_lbs):
+                    reachable_cells = set()
+                    if return_indices:
+                        reachable_cells.add((-2, -2))
+                    else:
+                        reachable_cells.add((-2, -2, -2, -2))
+                    break
+
+                # if theta is out of the range, then return (-3, -3), but continue
+                if theta_idx < 0 or theta_idx >= len(self.theta_lbs):
+                    if return_indices:
+                        reachable_cells.add((-3, -3))
+                        if self.reachable_cells_from_degraded_method is not None and reachable_cells_from_degraded_method != {(-2, -2)}:
+                            if (-3, -3) not in reachable_cells_from_degraded_method:
+                                logging.warning(f"    warning: error in computing reachable cells for p_idx={p_idx}, theta_idx={theta_idx}, this should be overapproximated by a degraded method")
+                    else:
+                        reachable_cells.add((-3, -3, -3, -3))
+                    continue
+                
+                # normal case
                 if return_indices:
                     reachable_cells.add((p_idx, theta_idx))
+                    # sanity check if reachable cells from degraded method is provided
+                    if self.reachable_cells_from_degraded_method is not None and reachable_cells_from_degraded_method != {(-2, -2)}:
+                        if (p_idx, theta_idx) not in reachable_cells_from_degraded_method:
+                            logging.warning(f"    warning: error in computing reachable cells for p_idx={p_idx}, theta_idx={theta_idx}, this should be overapproximated by a degraded method")
                 else:
                     reachable_cells.add((self.p_lbs[p_idx], self.p_ubs[p_idx], 
                                          self.theta_lbs[theta_idx], self.theta_ubs[theta_idx]))
@@ -578,37 +617,58 @@ class MultiStepVerifier:
             t_end_sim = time.time()
             time_dict['simulation'] = t_end_sim - t_start_sim
 
+            return_dict = dict()
+            return_dict['simulation_reachable_cells'] = reachable_cells
+
+            if reachable_cells == {(-2, -2)} or reachable_cells == {(-2, -2, -2, -2)}:
+                # in this case, the airplane is out of the safe region
+                logging.info(f"    Simulation done, found unsafe region.")
+                # prepare the return
+                return_dict['reachable_cells'] = reachable_cells
+                if return_verts:
+                    return_dict['verts'] = []
+                if return_tolerance:
+                    return_dict['split_tolerance'] = -2.0 # this indicates that only simulation is used
+                time_dict['total_time'] = time_dict['simulation']
+                return_dict['time_dict'] = time_dict
+                return return_dict
+            
+            logging.info(f"    Simulation done, found {len(reachable_cells)} reachable cells.")
+
             # set nneum settings
             nnenum.set_exact_settings()
             Settings.GLPK_TIMEOUT = 10
             Settings.PRINT_OUTPUT = print_output
             Settings.TIMING_STATS = False
             Settings.RESULT_SAVE_STARS = True
+            #Settings.CONTRACT_LP_OPTIMIZED = False # use optimized lp contraction
+            Settings.CONTRACT_LP_TRACK_WITNESSES = False
+            #Settings.CONTRACT_LP_CHECK_EPSILON = 1e-3 # numerical error tolerated when doing contractions before error, None=skip
+
             if single_thread:
                 Settings.NUM_PROCESSES = 1
 
-            init_box = [[-0.8, 0.8], [-0.8, 0.8]]
+
+            init_box = [[-self.latent_bounds, self.latent_bounds], [-self.latent_bounds, self.latent_bounds]]
             init_box.extend([[p_lb, p_ub], [theta_lb, theta_ub]])
-            init_box.extend([[-0.8, 0.8]]*((self.step-1)*2))
+            init_box.extend([[-self.latent_bounds, self.latent_bounds]]*((self.step-1)*2))
             init_box = np.array(init_box, dtype=np.float32)
             init_bm, init_bias, init_box = compress_init_box(init_box)
             star = LpStar(init_bm, init_bias, init_box)
 
-            return_dict = dict()
 
             split_tolerance = start_tol
             while split_tolerance <= end_tol:
             #for split_tolerance in [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
                 t_start_enum = time.time()
-                if pbar is not None:
-                    pbar.set_description(f"split_tolerance={split_tolerance}")
-                else:
-                    print(f"split_tolerance={split_tolerance}")
+                logging.info(f"    Start enumerating with split_tolerance={split_tolerance}")
+
                 Settings.SPLIT_TOLERANCE = split_tolerance # small outputs get rounded to zero when deciding if splitting is possible
                 result = nnenum.enumerate_network(star, self.network)
                 t_end_enum = time.time()
                 time_dict[f'enumerate_network_{split_tolerance}'] = t_end_enum - t_start_enum
                 if result.result_str != "error":
+                    logging.info(f"    Enumerating done, found {len(result.stars)} stars.")
                     if return_tolerance:
                         return_dict['split_tolerance'] = split_tolerance
                     break
@@ -616,13 +676,19 @@ class MultiStepVerifier:
         
 
             if result.result_str == "error":
-                if return_tolerance:
-                    return_dict['split_tolerance'] = -1.0
-                reachable_cells = set()
-                if return_indices:
-                    reachable_cells.add((-1, -1))
+                logging.warning(f"    Enumerating failed with all split_tolerance.")
+                if self.reachable_cells_from_degraded_method is not None:
+                    reachable_cells = self.reachable_cells_from_degraded_method
+                    logging.info(f"    Use degraded method to overapproximate reachable cells, found {len(reachable_cells)} reachable cells.")
+                    return_dict['split_tolerance'] = -3.0
                 else:
-                    reachable_cells.add((-1, -1, -1, -1))
+                    if return_tolerance:
+                        return_dict['split_tolerance'] = -1.0
+                    reachable_cells = set()
+                    if return_indices:
+                        reachable_cells.add((-1, -1))
+                    else:
+                        reachable_cells.add((-1, -1, -1, -1))
 
                 return_dict['reachable_cells'] = reachable_cells
                 if return_verts:

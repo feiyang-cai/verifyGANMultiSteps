@@ -88,7 +88,7 @@ def main():
     if results['split_tolerance'] == -1.0:
         logging.error(f"Error in computing reachable set for cell ({p_idx}, {theta_idx}) trying all split tolerances")
     else:
-        logging.info(f"Computed reachable set for cell ({p_idx}, {theta_idx}) using split tolerance {results['split_tolerance']}, and the reachable set has {len(results['reachable_cells'])} cells")
+        logging.info(f"Computed reachable set for cell ({p_idx}, {theta_idx}) using split tolerance {results['split_tolerance']}, and the reachable set has {len(results['reachable_cells'])} cells, and they are {results['reachable_cells']}")
 
     with open(file, "wb") as f:
         pickle.dump(results, f)

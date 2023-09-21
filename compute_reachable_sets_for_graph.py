@@ -67,6 +67,10 @@ def main():
     )
 
     verifier = MultiStepVerifier(p_lbs, p_ubs, theta_lbs, theta_ubs, network_path)
+    degraded_method_reachable_cell_path = f"./results/reachable_sets_graph/p_coeff_{args.coeff_p}_theta_coeff_{args.coeff_theta}_p_num_bin_{args.p_num_bin}_theta_num_bin_{args.theta_num_bin}_steps_{args.reachability_steps}/reachable_sets_from_degraded_method.pkl"
+    if os.path.exists(degraded_method_reachable_cell_path):
+        with open(degraded_method_reachable_cell_path, "rb") as f:
+            degraded_method_reachable_set = pickle.load(f)
 
     start_point = len(p_lbs) // server_total_num * (server_id-1)
     end_point = len(p_lbs) // server_total_num * (server_id)
@@ -83,8 +87,12 @@ def main():
                 continue
 
             logging.info(f"Computing reachable set for cell ({p_idx}, {theta_idx})")
-            start_tol = 1e-4 if args.reachability_steps > 1 else 1e-7
-            results = verifier.compute_next_reachable_cells(p_idx, theta_idx, return_indices=True, pbar=pbar, return_tolerance=True, start_tol=start_tol)
+            start_tol = 1e-2 if args.reachability_steps > 1 else 1e-7
+            if os.path.exists(degraded_method_reachable_cell_path):
+                degraded_method_reachable_cells = degraded_method_reachable_set[(p_idx, theta_idx)]
+            else:
+                degraded_method_reachable_cells = None
+            results = verifier.compute_next_reachable_cells(p_idx, theta_idx, degraded_method_reachable_cells, return_indices=True, pbar=pbar, return_tolerance=True, start_tol=start_tol)
 
             if results['split_tolerance'] == -1.0:
                 logging.error(f"Error in computing reachable set for cell ({p_idx}, {theta_idx}) trying all split tolerances")
