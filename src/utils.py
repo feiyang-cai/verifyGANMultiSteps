@@ -450,6 +450,7 @@ class MultiStepVerifier:
 
     def get_reachable_cells_from_stars(self, stars, reachable_cells, return_indices=False, return_verts=False):
         verts = []
+        lp_false = False
         for star in stars:
 
             # compute the interval enclosure for the star set to get the candidate cells
@@ -459,7 +460,8 @@ class MultiStepVerifier:
                 interval_enclosure = self.compute_interval_enclosure(star)
                 logging.warning(f"    warning: error in computing interval enclosure for star, skip for now")
             except:
-                continue
+                lp_false = True
+                break
 
             ## if p is out of the range (unsafe), then clear the reachable cells
             if interval_enclosure == [[-1, -1], [-1, -1]]:
@@ -516,7 +518,7 @@ class MultiStepVerifier:
         if return_verts:
             return reachable_cells, verts
         else:
-            return reachable_cells
+            return reachable_cells, lp_false
 
 
     def compute_next_reachable_cells(self, p_idx, theta_idx, reachable_cells_from_degraded_method=None, return_indices=False, return_verts=False, print_output=False, pbar=None, return_tolerance=False, single_thread=False, start_tol=1e-8, end_tol=1e-2):
@@ -711,13 +713,21 @@ class MultiStepVerifier:
                 reachable_cells, verts = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=True)
                 return_dict['verts'] = verts
             else:
-                reachable_cells = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=False)
+                reachable_cells, lp_false = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=False)
+
+
             t_end_get_reachable = time.time()
             time_dict['get_reachable_cells'] = t_end_get_reachable - t_start_get_reachable
             t_end = time.time()
             time_dict['total_time'] = t_end - t_start
             return_dict['time_dict'] = time_dict
-            return_dict['reachable_cells'] = reachable_cells
+
+            if lp_false:
+                reachable_cells = self.reachable_cells_from_degraded_method
+                logging.info(f"    Use degraded method to overapproximate reachable cells, found {len(reachable_cells)} reachable cells.")
+                return_dict['split_tolerance'] = -4.0
+            else:
+                return_dict['reachable_cells'] = reachable_cells
 
         return return_dict
 
