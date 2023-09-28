@@ -500,8 +500,11 @@ class MultiStepVerifier:
                             continue
 
                     if return_indices and (p_idx, theta_idx) not in reachable_cells:
-                        if self.check_intersection(star, p_idx, theta_idx):
-                            reachable_cells.add((p_idx, theta_idx))
+                        try:
+                            if self.check_intersection(star, p_idx, theta_idx):
+                                reachable_cells.add((p_idx, theta_idx))
+                        except:
+                            logging.warning(f"    warning: error in checking intersection for p_idx={p_idx}, theta_idx={theta_idx}")
                     elif (not return_indices) and (self.p_lbs[p_idx], self.p_ubs[p_idx], self.theta_lbs[theta_idx], self.theta_ubs[theta_idx]) not in reachable_cells:
                         if self.check_intersection(star, p_idx, theta_idx):
                             reachable_cells.add(((self.p_lbs[p_idx], self.p_ubs[p_idx], self.theta_lbs[theta_idx], self.theta_ubs[theta_idx])))
