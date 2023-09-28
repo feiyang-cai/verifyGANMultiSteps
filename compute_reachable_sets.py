@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--coeff_p', type=float, default=-0.74, help='Coefficient for p')
     parser.add_argument('--coeff_theta', type=float, default=-0.44, help='Coefficient for theta')
     parser.add_argument('--add_random_simulations', type=bool, default=True, help='Add random simulations')
-    parser.add_argument('--add_eagerly_searching_simulations', type=bool, default=True, help='Add eagerly serching simulations')
+    parser.add_argument('--add_eagerly_searching_simulations', type=bool, default=False, help='Add eagerly serching simulations')
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -54,7 +54,7 @@ def main():
     results_dir = f"./results/compute_reachable_sets/p_coeff_{args.coeff_p}_theta_coeff_{args.coeff_theta}_p_lb_{p_lb}_p_ub_{p_ub}_theta_lb_{theta_lb}_theta_ub_{theta_ub}_p_range_lb_{p_range_lb}_p_range_ub_{p_range_ub}_p_num_bin_{p_num_bin}_theta_range_lb_{theta_range_lb}_theta_range_ub_{theta_range_ub}_theta_num_bin_{theta_num_bin}"
     os.makedirs(results_dir, exist_ok=True)
 
-
+    global_reachable_sets_one_step = set()
     # baseline method 
     dir = f"./results/reachable_sets_graph/p_coeff_{args.coeff_p}_theta_coeff_{args.coeff_theta}_p_num_bin_{args.p_num_bin}_theta_num_bin_{args.theta_num_bin}_baseline"
     baseline_pickle_file = os.path.join(dir, "reachable_sets.pkl")
@@ -100,6 +100,7 @@ def main():
     theta_bounds = np.array([theta_lb, theta_ub], dtype=np.float32)
     reachable_cells_baseline = baseline_verifier.get_overlapping_cells_from_intervals(p_bounds, theta_bounds, return_indices=True)
     reachable_cells_one_step_method = reachable_cells_baseline.copy()
+    global_reachable_sets_one_step |= reachable_cells_one_step_method
     
     current_results_dir = os.path.join(results_dir, "0s") 
     if not os.path.exists(current_results_dir):
@@ -174,6 +175,8 @@ def main():
                 raise Exception("Error occurs, (-2, -2) in the next reachable cells")
 
             reachable_cells_one_step_method_ |= next_reachable_cells_one_step
+        global_reachable_sets_one_step |= reachable_cells_one_step_method_
+        print(f"len of global reachable_sets at step {step} is {len(global_reachable_sets_one_step)}.")
 
         if reachable_cells_one_step_method_ == reachable_cells_one_step_method:
             print(f"one step method has converged at step {step}")
@@ -206,6 +209,12 @@ def main():
             image_file_path = os.path.join(current_results_dir, "converged.png")
             plotter.add_safety_violation_region()
             plotter.save_figure(image_file_path, x_range=(-11.0, 11.0), y_range=(-25.0, 25.0))
+
+            # save the global reachable sets for one step method using for two step method
+            pickle.dump(global_reachable_sets_one_step, open(os.path.join(results_dir, "global_reachable_sets_one_step.pkl"), "wb"))
+            plotter = Plotter(p_lbs, theta_lbs)
+            plotter.add_cells(global_reachable_sets_one_step, color='blue', filled=True)
+            plotter.save_figure(os.path.join(results_dir, "global_reachable_sets_one_step.png"), x_range=(-11.0, 11.0), y_range=(-25.0, 25.0))
             break
 
         current_results_dir = os.path.join(results_dir, f"{step}s") 

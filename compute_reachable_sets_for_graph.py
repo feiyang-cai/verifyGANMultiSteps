@@ -71,6 +71,12 @@ def main():
     if os.path.exists(degraded_method_reachable_cell_path):
         with open(degraded_method_reachable_cell_path, "rb") as f:
             degraded_method_reachable_set = pickle.load(f)
+    
+    file_defining_need_to_comupute = "global_reachable_sets_one_step.pkl"
+    with open(file_defining_need_to_comupute, "rb") as f:
+        cells_need_to_verify = pickle.load(f)
+        print(type(cells_need_to_verify))
+
 
     start_point = len(p_lbs) // server_total_num * (server_id-1)
     end_point = len(p_lbs) // server_total_num * (server_id)
@@ -83,7 +89,12 @@ def main():
 
             # Skip if already computed
             if os.path.exists(file):
-                logging.info(f"Computing rechable set for cell ({p_idx}, {theta_idx})...")
+                logging.info(f"Skipping cell ({p_idx}, {theta_idx}) since already computed")
+                continue
+
+            # FC: delete it later
+            if (p_idx, theta_idx) not in cells_need_to_verify:
+                logging.info(f"Skipping cell ({p_idx}, {theta_idx}) since not needed to verify")
                 continue
 
             logging.info(f"Computing reachable set for cell ({p_idx}, {theta_idx})")
