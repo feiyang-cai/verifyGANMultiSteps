@@ -455,7 +455,11 @@ class MultiStepVerifier:
             # compute the interval enclosure for the star set to get the candidate cells
             ## TODO: using zonotope enclosure may be faster,
             ## but we need to solve LPs to get the candidate cells
-            interval_enclosure = self.compute_interval_enclosure(star)
+            try:
+                interval_enclosure = self.compute_interval_enclosure(star)
+                logging.warning(f"    warning: error in computing interval enclosure for star, skip for now")
+            except:
+                continue
 
             ## if p is out of the range (unsafe), then clear the reachable cells
             if interval_enclosure == [[-1, -1], [-1, -1]]:
