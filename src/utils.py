@@ -726,8 +726,7 @@ class MultiStepVerifier:
                 reachable_cells = self.reachable_cells_from_degraded_method
                 logging.info(f"    Use degraded method to overapproximate reachable cells, found {len(reachable_cells)} reachable cells.")
                 return_dict['split_tolerance'] = -4.0
-            else:
-                return_dict['reachable_cells'] = reachable_cells
+            return_dict['reachable_cells'] = reachable_cells
 
         return return_dict
 
