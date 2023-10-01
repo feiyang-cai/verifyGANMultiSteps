@@ -458,8 +458,8 @@ class MultiStepVerifier:
             ## but we need to solve LPs to get the candidate cells
             try:
                 interval_enclosure = self.compute_interval_enclosure(star)
-                logging.warning(f"    warning: error in computing interval enclosure for star, skip for now")
             except:
+                logging.warning(f"    warning: error in computing interval enclosure for star, skip for now")
                 lp_false = True
                 break
 
