@@ -527,8 +527,7 @@ class MultiStepVerifier:
         theta_lb = self.theta_lbs[theta_idx]
         theta_ub = self.theta_ubs[theta_idx]
         self.reachable_cells_from_degraded_method = reachable_cells_from_degraded_method
-        if self.reachable_cells_from_degraded_method is not None:
-            logging.info(f"    reachable cells from degraded method: {self.reachable_cells_from_degraded_method}")
+        assert self.reachable_cells_from_degraded_method is not None, "reachable_cells_from_degraded_method must be provided"
 
         return_dict = dict()
         if hasattr(self, 'reachable_cells'):
@@ -649,7 +648,7 @@ class MultiStepVerifier:
             Settings.GLPK_TIMEOUT = 10
             Settings.PRINT_OUTPUT = print_output
             Settings.TIMING_STATS = False
-            Settings.RESULT_SAVE_STARS = True
+            #Settings.RESULT_SAVE_STARS = True
             #Settings.CONTRACT_LP_OPTIMIZED = False # use optimized lp contraction
             Settings.CONTRACT_LP_TRACK_WITNESSES = False
             #Settings.CONTRACT_LP_CHECK_EPSILON = 1e-3 # numerical error tolerated when doing contractions before error, None=skip
@@ -665,7 +664,15 @@ class MultiStepVerifier:
             init_bm, init_bias, init_box = compress_init_box(init_box)
             star = LpStar(init_bm, init_bias, init_box)
 
-
+            info_send_to_nnumem = dict()
+            info_send_to_nnumem['p_lbs'] = self.p_lbs
+            info_send_to_nnumem['p_ubs'] = self.p_ubs
+            info_send_to_nnumem['theta_lbs'] = self.theta_lbs
+            info_send_to_nnumem['theta_ubs'] = self.theta_ubs
+            possible_cells = self.reachable_cells_from_degraded_method-reachable_cells
+            assert reachable_cells.issubset(self.reachable_cells_from_degraded_method)
+            info_send_to_nnumem['possible_cells'] = possible_cells
+            
             split_tolerance = start_tol
             while split_tolerance <= end_tol:
             #for split_tolerance in [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]:
@@ -673,11 +680,11 @@ class MultiStepVerifier:
                 logging.info(f"    Start enumerating with split_tolerance={split_tolerance}")
 
                 Settings.SPLIT_TOLERANCE = split_tolerance # small outputs get rounded to zero when deciding if splitting is possible
-                result = nnenum.enumerate_network(star, self.network)
+                result = nnenum.enumerate_network(star, self.network, info_send_to_nnumem)
                 t_end_enum = time.time()
                 time_dict[f'enumerate_network_{split_tolerance}'] = t_end_enum - t_start_enum
                 if result.result_str != "error":
-                    logging.info(f"    Enumerating done, found {len(result.stars)} stars.")
+                    logging.info(f"    Enumerating done, found {len(result.reachable_cells)} new reachable_cells.")
                     if return_tolerance:
                         return_dict['split_tolerance'] = split_tolerance
                     break
@@ -709,24 +716,17 @@ class MultiStepVerifier:
                 return return_dict 
 
             t_start_get_reachable = time.time()
-            if return_verts:
-                reachable_cells, verts = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=True)
-                return_dict['verts'] = verts
-            else:
-                reachable_cells, lp_false = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=False)
-
-
+            reachable_cells = result.reachable_cells | reachable_cells
+            #reachable_cells, lp_false = self.get_reachable_cells_from_stars(result.stars, reachable_cells, return_indices=return_indices, return_verts=False)
             t_end_get_reachable = time.time()
+            error_stars = result.total_error_stars
+
             time_dict['get_reachable_cells'] = t_end_get_reachable - t_start_get_reachable
             t_end = time.time()
             time_dict['total_time'] = t_end - t_start
             return_dict['time_dict'] = time_dict
-
-            if lp_false:
-                reachable_cells = self.reachable_cells_from_degraded_method
-                logging.info(f"    Use degraded method to overapproximate reachable cells, found {len(reachable_cells)} reachable cells.")
-                return_dict['split_tolerance'] = -4.0
             return_dict['reachable_cells'] = reachable_cells
+            return_dict['error_stars'] = error_stars
 
         return return_dict
 
