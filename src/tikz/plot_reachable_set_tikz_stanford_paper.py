@@ -32,7 +32,8 @@ p_simulations = [round(i, 2) for i in list(simulations[:, 0])]
 theta_simulations = [round(i, 2) for i in list(simulations[:, 1])]
 reachable_cells_baseline = data["reachable_cells_baseline"]
 reachable_cells_one_step_method = data["reachable_cells_one_step_method"]
-print(f"step 0, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}")
+reachable_cells_two_step_method = data["reachable_cells_two_step_method"]
+print(f"step 0, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}, cells of two step method: {len(reachable_cells_two_step_method)}")
 
 ax.scatter(p_simulations, theta_simulations, s=0.05, color='black')
 
@@ -71,7 +72,8 @@ simulation_eager = np.concatenate([simulation_p_eager, simulation_theta_eager], 
 simulations = np.round(np.concatenate([simulation_random, simulation_eager], axis=0), 2)
 reachable_cells_baseline = data["reachable_cells_baseline"]
 reachable_cells_one_step_method = data["reachable_cells_one_step_method"]
-print(f"step 5, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}")
+reachable_cells_two_step_method = data["reachable_cells_two_step_method"]
+print(f"step 5, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}, cells of two step method: {len(reachable_cells_two_step_method)}")
 
 ax.scatter(simulations[:, 0], simulations[:, 1], s=0.05, color='black')
 
@@ -88,6 +90,13 @@ for idx, cell in enumerate(reachable_cells_one_step_method):
     polygon = polygon.union(Polygon([[reachable_patch[0], reachable_patch[2]], [reachable_patch[0], reachable_patch[3]], [reachable_patch[1], reachable_patch[3]], [reachable_patch[1], reachable_patch[2]]]))
 x, y = polygon.exterior.xy
 ax.fill(x, y, color='blue', alpha=0.5, label='_nolegend_')
+
+polygon = Polygon()
+for idx, cell in enumerate(reachable_cells_two_step_method):
+    reachable_patch = [p_lbs[cell[0]], p_lbs[cell[0]]+p_lbs[1]-p_lbs[0], theta_lbs[cell[1]], theta_lbs[cell[1]]+theta_lbs[1]-theta_lbs[0]]
+    polygon = polygon.union(Polygon([[reachable_patch[0], reachable_patch[2]], [reachable_patch[0], reachable_patch[3]], [reachable_patch[1], reachable_patch[3]], [reachable_patch[1], reachable_patch[2]]]))
+x, y = polygon.exterior.xy
+ax.fill(x, y, color='yellow', alpha=0.5, label='_nolegend_')
 
 
 ax.set_xlim(-11.0, 11.0)
@@ -115,7 +124,8 @@ simulation_eager = np.concatenate([simulation_p_eager, simulation_theta_eager], 
 simulations = np.round(np.concatenate([simulation_random, simulation_eager], axis=0), 2)
 reachable_cells_baseline = data["reachable_cells_baseline"]
 reachable_cells_one_step_method = data["reachable_cells_one_step_method"]
-print(f"step 10, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}")
+reachable_cells_two_step_method = data["reachable_cells_two_step_method"]
+print(f"step 10, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}, cells of two step method: {len(reachable_cells_two_step_method)}")
 
 ax.scatter(simulations[:, 0], simulations[:, 1], s=0.05, color='black')
 
@@ -133,6 +143,12 @@ for idx, cell in enumerate(reachable_cells_one_step_method):
 x, y = polygon.exterior.xy
 ax.fill(x, y, color='blue', alpha=0.5, label='_nolegend_')
 
+polygon = Polygon()
+for idx, cell in enumerate(reachable_cells_two_step_method):
+    reachable_patch = [p_lbs[cell[0]], p_lbs[cell[0]]+p_lbs[1]-p_lbs[0], theta_lbs[cell[1]], theta_lbs[cell[1]]+theta_lbs[1]-theta_lbs[0]]
+    polygon = polygon.union(Polygon([[reachable_patch[0], reachable_patch[2]], [reachable_patch[0], reachable_patch[3]], [reachable_patch[1], reachable_patch[3]], [reachable_patch[1], reachable_patch[2]]]))
+x, y = polygon.exterior.xy
+ax.fill(x, y, color='yellow', alpha=0.5, label='_nolegend_')
 
 ax.set_xlim(-11.0, 11.0)
 ax.set_ylim(-30.0, 30.0)
@@ -158,7 +174,8 @@ simulation_eager = np.concatenate([simulation_p_eager, simulation_theta_eager], 
 simulations = np.round(np.concatenate([simulation_random, simulation_eager], axis=0), 2)
 reachable_cells_baseline = data["reachable_cells_baseline"]
 reachable_cells_one_step_method = data["reachable_cells_one_step_method"]
-print(f"step 15, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}")
+reachable_cells_two_step_method = data["reachable_cells_two_step_method"]
+print(f"step 15, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}, cells of two step method: {len(reachable_cells_two_step_method)}")
 
 ax.scatter(simulations[:, 0], simulations[:, 1], s=0.05, color='black')
 
@@ -175,6 +192,13 @@ for idx, cell in enumerate(reachable_cells_one_step_method):
     polygon = polygon.union(Polygon([[reachable_patch[0], reachable_patch[2]], [reachable_patch[0], reachable_patch[3]], [reachable_patch[1], reachable_patch[3]], [reachable_patch[1], reachable_patch[2]]]))
 x, y = polygon.exterior.xy
 ax.fill(x, y, color='blue', alpha=0.5, label='_nolegend_')
+
+polygon = Polygon()
+for idx, cell in enumerate(reachable_cells_two_step_method):
+    reachable_patch = [p_lbs[cell[0]], p_lbs[cell[0]]+p_lbs[1]-p_lbs[0], theta_lbs[cell[1]], theta_lbs[cell[1]]+theta_lbs[1]-theta_lbs[0]]
+    polygon = polygon.union(Polygon([[reachable_patch[0], reachable_patch[2]], [reachable_patch[0], reachable_patch[3]], [reachable_patch[1], reachable_patch[3]], [reachable_patch[1], reachable_patch[2]]]))
+x, y = polygon.exterior.xy
+ax.fill(x, y, color='yellow', alpha=0.5, label='_nolegend_')
 
 
 ax.set_xlim(-11.0, 11.0)
@@ -243,7 +267,8 @@ simulation_eager = np.concatenate([simulation_p_eager, simulation_theta_eager], 
 simulations = np.round(np.concatenate([simulation_random, simulation_eager], axis=0), 2)
 reachable_cells_baseline = data["reachable_cells_baseline"]
 reachable_cells_one_step_method = data["reachable_cells_one_step_method"]
-print(f"converged, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}")
+reachable_cells_two_step_method = data["reachable_cells_two_step_method"]
+print(f"converged, cells of baseline method: {len(reachable_cells_baseline)}, cells of one step method: {len(reachable_cells_one_step_method)}, cells of two step method: {len(reachable_cells_two_step_method)}")
 
 ax.scatter(simulations[:, 0], simulations[:, 1], s=0.05, color='black')
 
@@ -260,6 +285,13 @@ for idx, cell in enumerate(reachable_cells_one_step_method):
     polygon = polygon.union(Polygon([[reachable_patch[0], reachable_patch[2]], [reachable_patch[0], reachable_patch[3]], [reachable_patch[1], reachable_patch[3]], [reachable_patch[1], reachable_patch[2]]]))
 x, y = polygon.exterior.xy
 ax.fill(x, y, color='blue', alpha=0.5, label='_nolegend_')
+
+polygon = Polygon()
+for idx, cell in enumerate(reachable_cells_two_step_method):
+    reachable_patch = [p_lbs[cell[0]], p_lbs[cell[0]]+p_lbs[1]-p_lbs[0], theta_lbs[cell[1]], theta_lbs[cell[1]]+theta_lbs[1]-theta_lbs[0]]
+    polygon = polygon.union(Polygon([[reachable_patch[0], reachable_patch[2]], [reachable_patch[0], reachable_patch[3]], [reachable_patch[1], reachable_patch[3]], [reachable_patch[1], reachable_patch[2]]]))
+x, y = polygon.exterior.xy
+ax.fill(x, y, color='yellow', alpha=0.5, label='_nolegend_')
 
 
 ax.set_xlim(-11.0, 11.0)

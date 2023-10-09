@@ -52,6 +52,23 @@ def main():
 
     with open(reachable_sets_pickle_file, "wb") as f:
         pickle.dump(reachable_sets_baseline, f)
+    
+    # two step method
+    two_step_method_reslts_path = f"./results/reachable_sets_graph/p_coeff_{args.coeff_p}_theta_coeff_{args.coeff_theta}_p_num_bin_{args.p_num_bin}_theta_num_bin_{args.theta_num_bin}_steps_2"
+    reachable_sets_two_step_method = defaultdict(set)
+    reachable_sets_pickle_file = os.path.join(two_step_method_reslts_path, "reachable_sets.pkl")
+    file_defining_need_to_comupute = "global_reachable_sets_one_step.pkl"
+    with open(file_defining_need_to_comupute, "rb") as f:
+        cells_need_to_verify = pickle.load(f)
+    for cell in cells_need_to_verify:
+        file_path = os.path.join(two_step_method_reslts_path, f"results_p_idx_{cell[0]}_theta_idx_{cell[1]}.pkl")
+        data = pickle.load(open(file_path, "rb"))
+        reachable_cells = data['reachable_cells']
+        reachable_sets_two_step_method[(cell[0], cell[1])] = reachable_cells
+    with open(reachable_sets_pickle_file, "wb") as f:
+        pickle.dump(reachable_sets_two_step_method, f)
+
+
 
 if __name__ == '__main__':
     main()
