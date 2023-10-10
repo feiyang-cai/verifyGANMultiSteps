@@ -23,7 +23,7 @@ def main():
     parser.add_argument('--coeff_p', type=float, default=-0.74, help='Coefficient for p')
     parser.add_argument('--coeff_theta', type=float, default=-0.44, help='Coefficient for theta')
     parser.add_argument('--add_random_simulations', type=bool, default=True, help='Add random simulations')
-    parser.add_argument('--add_eagerly_searching_simulations', type=bool, default=True, help='Add eagerly serching simulations')
+    parser.add_argument('--add_eagerly_searching_simulations', type=bool, default=False, help='Add eagerly serching simulations')
 
     # Parse the command-line arguments
     args = parser.parse_args()
@@ -177,7 +177,8 @@ def main():
                 raise Exception("Error occurs, (-2, -2) in the next reachable cells")
             reachable_cells_baseline_ |= next_reachable_cells_baseline
         global_reachable_sets_baseline |= reachable_cells_baseline_
-        print(f"len of global reachable_sets using baseline method at step {step} is {len(global_reachable_sets_baseline)}.")
+
+        print(f"len of reachable sets using baseline method at step {step} is {len(reachable_cells_baseline_)}.")
         
         if reachable_cells_baseline_ == reachable_cells_baseline:
             print(f"baseline method has converged at step {step}")
@@ -194,7 +195,7 @@ def main():
 
             reachable_cells_one_step_method_ |= next_reachable_cells_one_step
         global_reachable_sets_one_step |= reachable_cells_one_step_method_
-        print(f"len of global reachable_sets using one step method at step {step} is {len(global_reachable_sets_one_step)}.")
+        print(f"len of reachable sets using one step method at step {step} is {len(reachable_cells_one_step_method_)}.")
 
         if reachable_cells_one_step_method_ == reachable_cells_one_step_method:
             print(f"one step method has converged at step {step}")
@@ -213,7 +214,7 @@ def main():
 
             reachable_cells_two_step_method_ |= next_reachable_cells_two_step
         global_reachable_sets_two_step |= reachable_cells_two_step_method_
-        print(f"len of global reachable_sets using two step method at step {step} is {len(global_reachable_sets_two_step)}.")
+        print(f"len of reachable sets using two step method at step {step} is {len(reachable_cells_two_step_method_)}.")
         if step % 2 == 0:
             if reachable_cells_two_step_method_ == reachable_cells_two_step_method:
                 print(f"two step method has converged at step {step}")
@@ -261,9 +262,9 @@ def main():
         if not os.path.exists(current_results_dir):
             os.makedirs(current_results_dir, exist_ok=True)
         data = {}
-        data['reachable_cells_baseline'] = reachable_cells_baseline
-        data['reachable_cells_one_step_method'] = reachable_cells_one_step_method
-        data['reachable_cells_two_step_method'] = reachable_cells_two_step_method
+        data['reachable_cells_baseline'] = reachable_cells_baseline_
+        data['reachable_cells_one_step_method'] = reachable_cells_one_step_method_
+        data['reachable_cells_two_step_method'] = reachable_cells_two_step_method_
         data['simulation_p_random'] = p_random
         data['simulation_theta_random'] = theta_random
         if args.add_eagerly_searching_simulations:
