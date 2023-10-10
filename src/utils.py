@@ -527,7 +527,7 @@ class MultiStepVerifier:
         theta_lb = self.theta_lbs[theta_idx]
         theta_ub = self.theta_ubs[theta_idx]
         self.reachable_cells_from_degraded_method = reachable_cells_from_degraded_method
-        #assert self.reachable_cells_from_degraded_method is not None, "reachable_cells_from_degraded_method must be provided"
+        assert self.reachable_cells_from_degraded_method is not None, "reachable_cells_from_degraded_method must be provided"
 
         return_dict = dict()
         if hasattr(self, 'reachable_cells'):
